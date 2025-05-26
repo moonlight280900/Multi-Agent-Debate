@@ -230,13 +230,13 @@ class TinyLLaVA:
                     images=images_tensor,
                     video=None,
                     do_sample=True,
-                    temperature=0.7,  # 稍微提高温度以减少重复
+                    temperature=0.5,  # 稍微提高温度以减少重复
                     top_p=0.9,        # 增加多样性
                     num_beams=3,      # 使用beam search增加生成质量
                     pad_token_id=self.tokenizer.pad_token_id,
                     max_new_tokens=512,  # 减少最大生成长度
                     use_cache=True,
-                    repetition_penalty=1.2,  # 添加重复惩罚
+                    repetition_penalty=2.0,  # 添加重复惩罚
                     stopping_criteria=[stopping_criteria],
                 )
             
@@ -417,13 +417,13 @@ class TinyLLaVA:
                     images=None,
                     video=video_tensor,
                     do_sample=True,
-                    temperature=0.7,
+                    temperature=0.5,
                     top_p=0.9,
-                    num_beams=3,  # 减少beam数量以节省内存
+                    num_beams=3,  
                     pad_token_id=self.tokenizer.pad_token_id,
-                    max_new_tokens=1024,  # 增加生成长度以获得更完整的回答
+                    max_new_tokens=512,  # 增加生成长度以获得更完整的回答
                     use_cache=True,
-                    repetition_penalty=1.3,  # 提高重复惩罚以减少重复
+                    repetition_penalty=2.0,  # 提高重复惩罚以减少重复
                     stopping_criteria=[stopping_criteria],
                 )
             
@@ -478,7 +478,7 @@ class TinyLLaVA:
         
         Args:
             prompt: 提示词
-            max_length: 生成文本的最大长度，默认为256
+            max_length: 生成文本的最大长度，默认为512
             
         Returns:
             模型响应
