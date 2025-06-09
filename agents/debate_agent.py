@@ -73,92 +73,87 @@ class DebateAgent(BaseAgent):
             针对特定视角的提示词
         """
         base_prompt = """
-        As an expert in human action analysis, examine this video carefully. Pay attention to physical movements, environmental interactions, and behavior sequences. Consider their relation to intentions and goals. Output your thinking in <think> </think> tags.
+        You are an expert in human action analysis. Carefully examine the following video, focusing on physical movements, environmental interactions, and behavioral sequences. Reflect on their relationship to goals and intentions. Enclose your reasoning process within <think> </think> tags, followed by your final conclusion.
         """
+
         perspective_prompts = {
             "action_focused": """
-            <think>
-            - Identify physical movements.
-            - Describe sequence, speed, precision.
-            - Analyze interaction with environment/objects.
-            - Assess skill level.
-            </think>
-            Focus on objective action description. Analyze:
-            1. Specific movements.
-            2. Sequence and timing.
-            3. Environmental interaction.
-            4. Patterns or repetitions.
-            5. Technical skills demonstrated.
-            Avoid speculation on intentions or emotions.
+            - Observe and describe physical movements.
+            - Detail the sequence, timing, and precision of actions.
+            - Analyze interaction with objects and the environment.
+            - Evaluate the technical skill demonstrated.
+
+            Focus strictly on observable behaviors. Analyze:
+            1. Distinct motor actions.
+            2. Temporal order and rhythm.
+            3. Use and manipulation of objects or space.
+            4. Repetitive or patterned behaviors.
+            5. Proficiency and control.
+
+            Avoid interpreting internal states or intentions.
             """,
             "intention_focused": """
-            <think>
-            - Infer possible intentions.
-            - Consider goals and motivations.
-            - Analyze non-verbal cues for intent.
-            - Explore short-term and long-term objectives.
-            </think>
-            Focus on intentions. Analyze:
-            1. Likely goals.
-            2. Motivations.
-            3. Planned or spontaneous behavior.
-            4. Non-verbal cues suggesting intent.
-            5. Alternative explanations.
-            Support with video evidence.
+            - Hypothesize possible goals and motivations.
+            - Interpret actions in light of inferred intentions.
+            - Use non-verbal cues to assess purpose.
+            - Distinguish between planned vs. spontaneous behaviors.
+
+            Focus on intentionality. Analyze:
+            1. Underlying goals driving the actions.
+            2. Contextual motivation (short and long term).
+            3. Evidence of planning or improvisation.
+            4. Gestures and cues revealing intent.
+            5. Multiple plausible interpretations.
+
+            Support all inferences with observed behavior.
             """,
             "context_focused": """
-            <think>
-            - Analyze physical setting.
-            - Consider environmental influence.
-            - Think about social/cultural context.
-            - Observe interactions with others.
-            </think>
-            Focus on context's role. Analyze:
-            1. Physical setting's relation to actions.
-            2. Central objects/tools.
-            3. Social environment's effect.
-            4. Cultural/situational norms.
-            5. Behavior differences in other contexts.
+            - Assess the physical and social setting.
+            - Explore how environment influences behavior.
+            - Consider cultural and situational norms.
+            - Identify key contextual elements affecting the action.
+
+            Focus on contextual influence. Analyze:
+            1. Relationship between setting and behavior.
+            2. Presence and role of objects/tools.
+            3. Impact of social surroundings.
+            4. Cultural conventions shaping actions.
+            5. How behavior might change in other contexts.
             """,
             "emotional_focused": """
-            <think>
-            - Observe facial expressions and body language.
-            - Analyze emotional cues.
-            - Note emotional changes.
-            - Consider emotion's influence on actions.
-            </think>
-            Focus on emotions. Analyze:
-            1. Evident emotions.
-            2. Relation to actions.
-            3. Emotional shifts and triggers.
-            4. Impact on behavior/decision-making.
-            5. Evidence of emotion regulation.
-            Link emotions to actions where possible.
+            - Detect emotional states through body language and facial expression.
+            - Trace emotional dynamics throughout the action.
+            - Assess how emotions influence decisions and behavior.
+
+            Focus on affective aspects. Analyze:
+            1. Observable emotional cues.
+            2. Temporal shifts in emotion.
+            3. Connection between emotions and actions.
+            4. Regulation or suppression of emotional responses.
+            5. Emotional context of decision-making.
+
+            Cite specific behavioral evidence where possible.
             """,
             "social_focused": """
-            <think>
-            - Identify social interactions.
-            - Consider social norms/expectations.
-            - Think about social roles/identities.
-            - Analyze behavior's social perception.
-            </think>
-            Focus on social dimensions. Analyze:
-            1. Behavior's social function.
-            2. Social messages/signals.
-            3. Conformity to/challenge of norms.
-            4. Enacted social roles.
-            5. Potential reactions/interpretations.
-            Provide social significance analysis.
+            - Examine interactions among individuals.
+            - Consider social norms, roles, and expectations.
+            - Evaluate the social function of behaviors.
+
+            Focus on the social dimension. Analyze:
+            1. Communication signals and their meanings.
+            2. Role-based behaviors and group dynamics.
+            3. Conformity to or defiance of norms.
+            4. Interpersonal influence and reactions.
+            5. Broader social interpretation of actions.
+
             """
         }
         return base_prompt + (perspective_prompts.get(self.perspective) or """
-        <think>
         - Analyze actions, intentions, context, emotions, social factors.
         - Identify key movements.
         - Infer intentions.
         - Consider environmental/social influence.
         - Observe emotions.
-        </think>
         Provide a holistic analysis integrating multiple perspectives.
         """)
     
@@ -173,26 +168,26 @@ class DebateAgent(BaseAgent):
             响应结果
         """
         prompt = f"""
-        As an expert from the {self.perspective} perspective, review this interpretation:
-        
+        You are an expert analyzing human behavior from a {self.perspective} perspective. Review the following interpretation from another analyst:
+
         "{argument}"
-        
-        <think>
-        - Relate to your perspective.
-        - Identify agreement/disagreement.
-        - Consider video evidence.
-        - Add depth/nuance.
-        - If part of ongoing debate, build on previous discussions.
-        </think>
-        
-        Respond by:
-        1. Acknowledging valid points.
-        2. Noting limitations/oversights.
-        3. Offering additional insights.
-        4. Suggesting integrated understanding.
-        
-        Maintain a collaborative tone.
+
+        Your task is to critically engage with the argument by:
+        - Relating it to your analytical lens.
+        - Identifying areas of agreement and divergence.
+        - Referencing relevant behavioral or contextual evidence.
+        - Deepening or refining the analysis.
+        - If applicable, connecting to prior debate contributions.
+
+        Structure your response by:
+        1. Recognizing valid observations.
+        2. Highlighting gaps or limitations.
+        3. Adding nuanced insights.
+        4. Proposing an integrative understanding if possible.
+
+        Maintain a constructive and professional tone aimed at collaborative understanding.
         """
+
         loop = asyncio.get_event_loop()
         result = await loop.run_in_executor(None, lambda: self.model.analyze_text(prompt))
         if torch.cuda.is_available():

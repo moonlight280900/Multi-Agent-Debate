@@ -221,67 +221,134 @@ class DebateModeratorAgent(BaseAgent):
             for round_data in debate_results.get("debate_history", [])
         )
         
-        prompt = f"""You are a debate moderator who analyzes the different perspectives of human behavior in a video by multiple AI experts.
+        prompt = f"""You are a neutral debate moderator tasked with synthesizing multiple expert analyses of human behavior observed in a video.
 
-Here's an analysis of the video from each perspective:
-{perspectives_analyses_text}
+        Provided below are:
+        - Expert analyses from different perspectives:
+        {perspectives_analyses_text}
 
-The experts conducted a {self.debate_rounds} round of debates, and here are the final viewpoints:
-{debate_points_text}
+        - Final viewpoints after {self.debate_rounds} rounds of debate:
+        {debate_points_text}
 
-Summarize the main points of view from each perspective, identify common ground and disagreement, and draw conclusions about the most likely behavioral intent.
+        Your task is to:
+        - Summarize the key points from each perspective.
+        - Identify areas of agreement and disagreement.
+        - Provide an integrated interpretation of the observed behavior.
+        - Determine the most likely underlying intention behind the actions.
 
-Output your analysis in JSON format with the following fields:
-{{
-"integrated_analysis": "Concise integrated analysis of all perspectives",
-"final_intent_determination": "A clear conclusion about the most probable intentions",
-"confidence_assessment": "Confidence score (numeric value between 0-1)"
-}}
+        Present your output **strictly** in the following JSON format:
+        {{
+        "integrated_analysis": "A concise synthesis combining all perspectives into a unified interpretation.",
+        "final_intent_determination": "A clear conclusion stating the most probable intention behind the behavior.",
+        "confidence_assessment": "A numerical confidence score between 0 and 1 representing the strength of the conclusion."
+        }}
 
-Make sure to be concise and only output JSON content with relevant information. Do not repeat the same points multiple times.
-"""
+        Only output valid JSON. Avoid repeating information or including commentary outside the JSON structure.
+        """
+
         
         try:
             self.logger.info("开始使用TinyLLaVA模型进行辩论总结...")
             loop = asyncio.get_event_loop()
             result = await loop.run_in_executor(None, lambda: self.model.analyze_text(prompt, max_length=2048))
             
+            # 解析结果
             if result.get("success", False):
                 summary_text = result.get("response", "")
-                json_str = None
-                if "```json" in summary_text and "```" in summary_text.split("```json", 1)[1]:
-                    json_str = summary_text.split("```json", 1)[1].split("```", 1)[0].strip()
-                elif "{" in summary_text and "}" in summary_text:
-                    start_idx, end_idx = summary_text.find("{"), summary_text.rfind("}")
-                    if start_idx >= 0 and end_idx > start_idx:
-                        json_str = summary_text[start_idx:end_idx+1].strip()
                 
-                if json_str:
-                    json_str = json_str.replace('\n', ' ').replace('\r', ' ').replace('\'', '"')
-                    json_str = ''.join(ch for ch in json_str if ord(ch) >= 32)
-                    result_json = json.loads(json_str)
-                else:
-                    result_json = {"integrated_analysis": summary_text, "final_intent_determination": "无法提取结构化意图", "confidence_assessment": 0.5}
-                
-                required_fields = ["integrated_analysis", "final_intent_determination", "confidence_assessment"]
-                for field in required_fields:
-                    if field not in result_json:
-                        result_json[field] = "无法确定" if field != "confidence_assessment" else 0.5
-                
-                self._add_to_debate_content(f"综合分析: {result_json['integrated_analysis']}")
-                self._add_to_debate_content(f"最终意图判断: {result_json['final_intent_determination']}")
-                self._add_to_debate_content(f"置信度: {result_json['confidence_assessment']}")
-                
-                final_result = {"success": True, "content": result_json, "raw_summary": summary_text}
+                # 尝试从文本中提取JSON
+                try:
+                    # 处理各种可能的情况以提取JSON
+                    json_str = None
+                    
+                    # 检查是否有代码块格式的JSON
+                    if "```json" in summary_text and "```" in summary_text.split("```json", 1)[1]:
+                        json_str = summary_text.split("```json", 1)[1].split("```", 1)[0].strip()
+                    elif "```" in summary_text and "```" in summary_text.split("```", 1)[1]:
+                        json_str = summary_text.split("```", 1)[1].split("```", 1)[0].strip()
+                    # 检查是否有完整的JSON对象
+                    elif "{" in summary_text and "}" in summary_text:
+                        # 提取最外层的大括号内容
+                        start_idx = summary_text.find("{")
+                        end_idx = summary_text.rfind("}")
+                        if start_idx >= 0 and end_idx > start_idx:
+                            json_str = summary_text[start_idx:end_idx+1].strip()
+                    
+                    # 如果找到了可能的JSON字符串，尝试修复和解析
+                    if json_str:
+                        # 清理可能的格式问题
+                        json_str = json_str.replace('\n', ' ').replace('\r', ' ')
+                        json_str = json_str.replace('\'', '"')  # 替换单引号为双引号
+                        
+                        # 移除可能导致错误的控制字符
+                        json_str = ''.join(ch for ch in json_str if ord(ch) >= 32)
+                        
+                        # 尝试解析JSON
+                        result_json = json.loads(json_str)
+                    else:
+                        # 没有找到JSON格式，创建一个基本结构
+                        result_json = {
+                            "integrated_analysis": summary_text, 
+                            "final_intent_determination": "无法从模型响应中提取结构化意图",
+                            "confidence_assessment": 0.5
+                        }
+                    
+                    # 检查必要字段是否存在
+                    required_fields = ["integrated_analysis", "final_intent_determination", "confidence_assessment"]
+                    for field in required_fields:
+                        if field not in result_json:
+                            if field == "integrated_analysis":
+                                result_json[field] = summary_text
+                            elif field == "final_intent_determination":
+                                result_json[field] = "无法确定具体意图"
+                            elif field == "confidence_assessment":
+                                result_json[field] = 0.5
+                    
+                    # 记录总结结果
+                    self._add_to_debate_content(f"综合分析: {result_json.get('integrated_analysis', '')}")
+                    self._add_to_debate_content(f"最终意图判断: {result_json.get('final_intent_determination', '')}")
+                    self._add_to_debate_content(f"置信度: {result_json.get('confidence_assessment', 0.5)}")
+                    
+                    final_result = {
+                        "success": True,
+                        "content": result_json,
+                        "raw_summary": summary_text
+                    }
+                except json.JSONDecodeError as json_error:
+                    self.logger.warning(f"无法解析JSON结果: {str(json_error)}，返回原始文本")
+                    
+                    # 从文本中提取关键信息构建结构化结果
+                    lines = summary_text.split('\n')
+                    analysis = " ".join(lines)  
+                    
+                    # 记录原始输出
+                    self._add_to_debate_content("无法解析为JSON格式，原始输出:")
+                    self._add_to_debate_content(summary_text)
+                    
+                    final_result = {
+                        "success": True,
+                        "content": {
+                            "integrated_analysis": analysis,
+                            "final_intent_determination": "无法提取结构化意图，请查看整合分析",
+                            "confidence_assessment": 0.5
+                        },
+                        "raw_summary": summary_text
+                    }
             else:
                 self.logger.error("模型分析失败")
                 self._add_to_debate_content(f"模型分析失败: {result.get('error', '未知错误')}")
-                final_result = {"success": False, "error": result.get("error", "未知错误")}
+                final_result = {
+                    "success": False,
+                    "error": result.get("error", "未知错误")
+                }
+                
         except Exception as e:
             self.logger.error(f"总结辩论结果时出错: {str(e)}")
             self._add_to_debate_content(f"总结辩论结果时出错: {str(e)}")
-            final_result = {"success": False, "error": f"总结辩论结果时出错: {str(e)}"}
-        
+            final_result = {
+                "success": False,
+                "error": f"总结辩论结果时出错: {str(e)}"
+            }
         self._add_to_debate_content("\n=== 辩论结束 ===")
         return final_result
     

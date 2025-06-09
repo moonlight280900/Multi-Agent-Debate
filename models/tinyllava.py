@@ -230,13 +230,13 @@ class TinyLLaVA:
                     images=images_tensor,
                     video=None,
                     do_sample=True,
-                    temperature=0.5,  # 稍微提高温度以减少重复
+                    temperature=0.7,  # 稍微提高温度以减少重复
                     top_p=0.9,        # 增加多样性
-                    num_beams=3,      # 使用beam search增加生成质量
+                    num_beams=1,      # 使用beam search增加生成质量
                     pad_token_id=self.tokenizer.pad_token_id,
-                    max_new_tokens=512,  # 减少最大生成长度
+                    max_new_tokens=2048,  # 减少最大生成长度
                     use_cache=True,
-                    repetition_penalty=2.0,  # 添加重复惩罚
+                    repetition_penalty=1.5,  # 添加重复惩罚
                     stopping_criteria=[stopping_criteria],
                 )
             
@@ -305,11 +305,8 @@ class TinyLLaVA:
             result = self.text_processor(msg.messages, mode='eval')
             
             input_ids = result['input_ids']
-            print(f"""msg is {msg.messages} \n||| result is {result}""")
             input_ids = input_ids.unsqueeze(0).to(self.device)
             
-            # 使用更简单的方法处理视频 - 直接用cv2提取帧
-            print(f"开始处理视频: {video_path}")
             
             # 主动清理GPU内存
             torch.cuda.empty_cache()
@@ -328,12 +325,10 @@ class TinyLLaVA:
             fps = cap.get(cv2.CAP_PROP_FPS)
             duration = total_frames / fps if fps > 0 else 0
             
-            print(f"视频信息: 总帧数={total_frames}, FPS={fps}, 时长={duration}秒")
             
             # 减少帧数以避免内存溢出问题
             # 视频网格是模型处理的内存瓶颈点
             reduced_frames = min(16, total_frames)  # 进一步减少到最多6帧
-            print(f"为避免内存溢出，减少处理帧数至: {reduced_frames}")
                 
             # 计算均匀间隔的帧索引
             if total_frames <= reduced_frames:
@@ -344,7 +339,6 @@ class TinyLLaVA:
                 step = total_frames / reduced_frames
                 frame_indices = [int(i * step) for i in range(reduced_frames)]
             
-            print(f"计划提取的帧索引: {frame_indices}")
             
             # 提取指定帧
             frames = []
@@ -370,7 +364,6 @@ class TinyLLaVA:
                     "error": "无法提取视频帧"
                 }
                 
-            print(f"成功提取 {len(frames)} 帧")
             
             # 处理提取的帧 - 考虑降低分辨率以减少内存使用
             processed_frames = []
@@ -396,7 +389,6 @@ class TinyLLaVA:
             video_tensor = torch.stack(processed_frames)
             video_tensor = video_tensor.unsqueeze(0).to(self.device)  # 添加批次维度
             
-            print(f"视频张量形状: {video_tensor.shape}")
             
             # 主动清理内存以减少内存溢出风险
             torch.cuda.empty_cache()
@@ -417,13 +409,13 @@ class TinyLLaVA:
                     images=None,
                     video=video_tensor,
                     do_sample=True,
-                    temperature=0.5,
+                    temperature=0.7,
                     top_p=0.9,
-                    num_beams=3,  
+                    num_beams=1,  
                     pad_token_id=self.tokenizer.pad_token_id,
-                    max_new_tokens=512,  # 增加生成长度以获得更完整的回答
+                    max_new_tokens=2048,  # 增加生成长度以获得更完整的回答
                     use_cache=True,
-                    repetition_penalty=2.0,  # 提高重复惩罚以减少重复
+                    repetition_penalty=1.5,  # 提高重复惩罚以减少重复
                     stopping_criteria=[stopping_criteria],
                 )
             
@@ -431,13 +423,10 @@ class TinyLLaVA:
             outputs = self.tokenizer.batch_decode(
                 output_ids, skip_special_tokens=True
             )[0]
-            print(f"""content is : {outputs}""")
             outputs = outputs.strip()
-            print(f"""content1 is : {outputs}""")
             if outputs.endswith(stop_str):
                 outputs = outputs[: -len(stop_str)]
             outputs = outputs.strip()
-            print(f"""content2 is : {outputs}""")
             return {
                 "success": True,
                 "content": outputs,
@@ -449,8 +438,6 @@ class TinyLLaVA:
             print(f"CUDA内存溢出错误: {str(e)}")
             # 清理GPU内存
             torch.cuda.empty_cache()
-            # 尝试使用纯文本分析作为回退方案
-            print("尝试回退到纯文本分析...")
             try:
                 return self.analyze_text(prompt)
             except Exception as text_error:
@@ -513,21 +500,16 @@ class TinyLLaVA:
                 Message = message_module.Message
                 print("动态导入Message成功")
             
-            # 使用Message和TextPreprocess处理文本
-            print("创建Message实例并添加消息...")
             msg = Message()
             msg.add_message(prompt)
-            print("使用text_processor处理消息...")
             result = self.text_processor(msg.messages, mode='eval')
             
             input_ids = result['input_ids']
             input_ids = input_ids.unsqueeze(0).to(self.device)
-            print(f"输入ID张量形状: {input_ids.shape}")
             
             # 获取停止生成的标记
             stop_str = self.text_processor.template.separator.apply()[1]
             keywords = [stop_str]
-            print(f"设置停止标志: {stop_str}")
             
             # 导入停止标准
             from tinyllava.eval.run_tiny_llava import KeywordsStoppingCriteria
@@ -537,8 +519,7 @@ class TinyLLaVA:
             if torch.cuda.is_available():
                 torch.cuda.empty_cache()
             
-            # 使用更保守的参数配置，降低内存使用
-            # 生成回答
+
             print("开始生成回答...")
             with torch.inference_mode():
                 output_ids = self.model.generate(
@@ -548,15 +529,14 @@ class TinyLLaVA:
                     do_sample=True,
                     temperature=0.7,
                     top_p=None,
-                    num_beams=3,  # 使用beam=1降低内存使用
+                    num_beams=1,  # 使用beam=1降低内存使用
                     pad_token_id=self.tokenizer.pad_token_id,
-                    max_new_tokens=max_length,  # 使用传入的max_length参数
+                    max_new_tokens=2048,  # 使用传入的max_length参数
                     use_cache=True,
                     stopping_criteria=[stopping_criteria],
                 )
             
             # 解码输出
-            print("解码输出...")
             outputs = self.tokenizer.batch_decode(
                 output_ids, skip_special_tokens=True
             )[0]
@@ -564,13 +544,11 @@ class TinyLLaVA:
             if outputs.endswith(stop_str):
                 outputs = outputs[: -len(stop_str)]
             outputs = outputs.strip()
-            
             # 清理GPU内存
             if torch.cuda.is_available():
                 torch.cuda.empty_cache()
                 print("已清理GPU缓存，完成文本处理")
             
-            print(f"处理完成，输出长度: {len(outputs)}")
             
             return {
                 "success": True,
